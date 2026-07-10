@@ -1,0 +1,15 @@
+[project]
+name = "xdf-schedule-crawler"
+version = "1.0.0"
+description = "抓取 XDF 课表并生成 Excel 明细与五时段月视图"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "playwright>=1.40,<2",
+  "openpyxl>=3.1,<4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+

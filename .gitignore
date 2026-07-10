@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 登录态与本机浏览器数据（含 Cookie，严禁提交）
+browser_data/
+
+# 抓取结果与调试产物
+output/
+*.xlsx
+*.png
+*.json
+
+# 编辑器与系统文件
+.DS_Store
+.idea/
+.vscode/
+.reasonix/
+
