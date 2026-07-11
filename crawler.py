@@ -53,7 +53,8 @@ class ScheduleCrawler:
             args=["--disable-blink-features=AutomationControlled"],
             viewport={"width": 1400, "height": 900},
         )
-        self.page = self.context.new_page()
+        # 持久化上下文通常会带一个初始标签页。优先复用它，避免额外留下 about:blank。
+        self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
 
         print(f"🌐 正在打开课表页面: {config.SCHEDULE_PAGE_URL}")
         try:

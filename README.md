@@ -116,6 +116,10 @@ python -m unittest discover -s tests -v
 
 本项目采用 [MIT License](LICENSE) 开源。
 
+## 更新日志
+
+详见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 项目结构
 
 ```text
@@ -124,6 +128,7 @@ XdfScheduleCrawler/
 ├── crawler.py          # 浏览器登录与课表抓取
 ├── excel_exporter.py   # 明细表及五时段月视图
 ├── config.py           # 路径、接口和运行参数
+├── CHANGELOG.md         # 版本变更记录
 ├── requirements.txt    # Python 依赖
 ├── run.sh              # macOS/Linux 启动脚本
 └── tests/              # 本地单元测试
