@@ -1,11 +1,27 @@
 """Playwright 爬虫核心：登录后复用浏览器会话调用课表 API。"""
 import sys
 import time
+from datetime import datetime, timedelta
 from typing import Optional
 
 from playwright.sync_api import sync_playwright, Page, BrowserContext, TimeoutError as PwTimeout
 
 import config
+
+
+def split_date_range_by_month(start_date: str, end_date: str) -> list[tuple[str, str]]:
+    """把日期范围拆成接口可接受的逐月区间。"""
+    current = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    ranges = []
+
+    while current <= end:
+        next_month = (current.replace(day=28) + timedelta(days=4)).replace(day=1)
+        month_end = min(end, next_month - timedelta(days=1))
+        ranges.append((current.isoformat(), month_end.isoformat()))
+        current = next_month
+
+    return ranges
 
 
 class ScheduleCrawler:
@@ -174,8 +190,10 @@ class ScheduleCrawler:
           1. 先调日历 API 找出有课的天
           2. 只对有课的天调详情 API
         """
-        print(f"\n📅 查询日历概览: {start_date} ~ {end_date}")
-        calendar = self.get_calendar(start_date, end_date)
+        calendar = []
+        for range_start, range_end in split_date_range_by_month(start_date, end_date):
+            print(f"\n📅 查询日历概览: {range_start} ~ {range_end}")
+            calendar.extend(self.get_calendar(range_start, range_end))
 
         days_with_classes = sorted(
             (d for d in calendar if d.get("lessonCount", 0) > 0),
