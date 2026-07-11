@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XDF 课表导出
 // @namespace    https://github.com/nowscott/XdfScheduleCrawler
-// @version      1.0.0
+// @version      1.1.0
 // @description  在已登录的课表页面中导出课表明细和五时段月视图。
 // @author       nowscott
 // @match        https://we.xdf.cn/*
@@ -17,7 +17,7 @@
     'use strict';
 
     const API_BASE = 'https://gw-xeasy.xdf.cn/xeasy-srv-teachinghub';
-    const REQUEST_INTERVAL_MS = 400;
+    const MAX_CONCURRENT_REQUESTS = 3;
     const WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
     const EMPTY_SLOT_LABELS = [
         '08:00–10:00  无课',
@@ -110,16 +110,27 @@
             .filter((item) => Number(item.lessonCount) > 0)
             .sort((a, b) => String(a.day).localeCompare(String(b.day)));
         const schedules = [];
-        for (let index = 0; index < daysWithLessons.length; index += 1) {
-            const { day } = daysWithLessons[index];
-            onProgress(`正在读取 ${index + 1}/${daysWithLessons.length} 天…`);
-            const data = await requestJson(`${API_BASE}/lesson/list-by-date/v2`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date: day, lessonStatus: -1 }),
-            });
-            schedules.push(...(data?.lessonList || []).map((lesson) => ({ ...lesson, _date: day })));
-            if (index < daysWithLessons.length - 1) await wait(REQUEST_INTERVAL_MS);
+        let nextIndex = 0;
+        let completedDays = 0;
+        const workerCount = Math.min(MAX_CONCURRENT_REQUESTS, daysWithLessons.length);
+
+        async function worker() {
+            while (nextIndex < daysWithLessons.length) {
+                const index = nextIndex;
+                nextIndex += 1;
+                const { day } = daysWithLessons[index];
+                onProgress(`正在读取 ${index + 1}/${daysWithLessons.length} 天 · 已完成 ${completedDays} 天…`);
+                const data = await requestJson(`${API_BASE}/lesson/list-by-date/v2`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ date: day, lessonStatus: -1 }),
+                });
+                schedules.push(...(data?.lessonList || []).map((lesson) => ({ ...lesson, _date: day })));
+                completedDays += 1;
+                onProgress(`已完成 ${completedDays}/${daysWithLessons.length} 天 · 已获取 ${schedules.length} 节课…`);
+            }
         }
+
+        await Promise.all(Array.from({ length: workerCount }, worker));
         return schedules.sort((a, b) => String(a._date).localeCompare(String(b._date))
             || String(a.lessonStartTime || '').localeCompare(String(b.lessonStartTime || '')));
     }
@@ -178,6 +189,7 @@
         sheet['!cols'] = widths.map((width) => ({ wch: Math.min(Math.max(width + 2, 10), 40) }));
         sheet['!rows'] = [{ hpt: 24 }];
         sheet['!autofilter'] = { ref: `A1:${columnLetter(headers.length - 1)}1` };
+        sheet['!ref'] = `A1:${columnLetter(headers.length - 1)}${schedules.length + 1}`;
         return sheet;
     }
 
@@ -278,9 +290,13 @@
         return sheet;
     }
 
-    function exportWorkbook(schedules, startDate, endDate) {
+    function exportWorkbook(schedules, startDate, endDate, includeMonthViews) {
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, createDetailSheet(schedules), '课表');
+        if (!includeMonthViews) {
+            XLSX.writeFile(workbook, `课表明细_${startDate}_至_${endDate}.xlsx`);
+            return;
+        }
         const grouped = new Map();
         schedules.forEach((lesson) => {
             const match = String(lesson._date || '').match(/^(\d{4})-(\d{2})/);
@@ -303,8 +319,9 @@
         dialog.id = 'xdf-schedule-export-dialog';
         dialog.innerHTML = `
             <div class="xdf-export-card" role="dialog" aria-modal="true" aria-labelledby="xdf-export-title">
-                <div class="xdf-export-heading"><div><h2 id="xdf-export-title">导出课表 Excel</h2><p>导出明细表和五时段月视图</p></div><button type="button" class="xdf-export-close" aria-label="关闭">×</button></div>
+                <div class="xdf-export-heading"><div><h2 id="xdf-export-title">导出课表 Excel</h2><p>极速模式更快；完整模式包含月视图</p></div><button type="button" class="xdf-export-close" aria-label="关闭">×</button></div>
                 <div class="xdf-export-fields"><label>开始日期<input id="xdf-export-start" type="date" required></label><label>结束日期<input id="xdf-export-end" type="date" required></label></div>
+                <div class="xdf-export-modes"><label><input name="xdf-export-mode" type="radio" value="full" checked><span><strong>完整导出</strong>明细表 + 五时段月视图</span></label><label><input name="xdf-export-mode" type="radio" value="fast"><span><strong>极速导出</strong>仅明细表，生成更快</span></label></div>
                 <p id="xdf-export-status" class="xdf-export-status" aria-live="polite"></p>
                 <div class="xdf-export-actions"><button type="button" class="xdf-export-cancel">取消</button><button type="button" class="xdf-export-submit">开始导出</button></div>
             </div>`;
@@ -321,15 +338,19 @@
         submit.addEventListener('click', async () => {
             const rangeStart = startInput.value;
             const rangeEnd = endInput.value;
+            const mode = dialog.querySelector('input[name="xdf-export-mode"]:checked').value;
             if (!rangeStart || !rangeEnd) return void (status.textContent = '请选择开始日期和结束日期。');
             if (rangeStart > rangeEnd) return void (status.textContent = '结束日期不能早于开始日期。');
             submit.disabled = true;
             status.textContent = '正在查询有课日期…';
+            const startedAt = performance.now();
             try {
                 const schedules = await fetchSchedules(rangeStart, rangeEnd, (message) => { status.textContent = message; });
                 if (!schedules.length) return void (status.textContent = '所选日期范围没有课程，未生成文件。');
-                exportWorkbook(schedules, rangeStart, rangeEnd);
-                status.textContent = `已导出 ${schedules.length} 条课程记录，文件已开始下载。`;
+                status.textContent = mode === 'fast' ? '正在生成明细表…' : '正在生成明细表和月视图…';
+                exportWorkbook(schedules, rangeStart, rangeEnd, mode === 'full');
+                const elapsedSeconds = ((performance.now() - startedAt) / 1000).toFixed(1);
+                status.textContent = `已导出 ${schedules.length} 条课程记录，耗时 ${elapsedSeconds} 秒，文件已开始下载。`;
             } catch (error) {
                 console.error('[XDF 课表导出]', error);
                 status.textContent = `导出失败：${error.message || error}`;
@@ -356,7 +377,7 @@
             .xdf-export-card { width: min(420px, 100%); padding: 24px; border-radius: 16px; background: #fff; color: #172033; box-shadow: 0 18px 48px rgb(15 23 42 / 25%); }
             .xdf-export-heading { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 22px; }.xdf-export-heading h2 { margin: 0; font-size: 20px; line-height: 1.3; }.xdf-export-heading p { margin: 6px 0 0; color: #667085; font-size: 14px; }
             .xdf-export-close { border: 0; padding: 0 4px; background: transparent; color: #667085; cursor: pointer; font-size: 28px; line-height: 1; }.xdf-export-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }.xdf-export-fields label { display: grid; gap: 7px; color: #344054; font-size: 14px; font-weight: 600; }.xdf-export-fields input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #d0d5dd; border-radius: 8px; color: #172033; font: inherit; }.xdf-export-fields input:focus { outline: 3px solid rgb(22 119 255 / 18%); border-color: #1677ff; }
-            .xdf-export-status { min-height: 20px; margin: 16px 0 0; color: #667085; font-size: 13px; line-height: 1.5; }.xdf-export-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }.xdf-export-actions button { min-height: 38px; padding: 0 14px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; color: #344054; cursor: pointer; font: inherit; }.xdf-export-actions .xdf-export-submit { border-color: #1677ff; background: #1677ff; color: #fff; }.xdf-export-actions button:disabled { cursor: wait; opacity: .7; }
+            .xdf-export-modes { display: grid; gap: 9px; margin-top: 17px; }.xdf-export-modes label { display: flex; align-items: flex-start; gap: 9px; padding: 10px; border: 1px solid #d0d5dd; border-radius: 8px; color: #475467; cursor: pointer; font-size: 13px; }.xdf-export-modes input { margin: 3px 0 0; accent-color: #1677ff; }.xdf-export-modes span { display: grid; gap: 3px; }.xdf-export-modes strong { color: #172033; font-size: 14px; }.xdf-export-status { min-height: 20px; margin: 16px 0 0; color: #667085; font-size: 13px; line-height: 1.5; }.xdf-export-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }.xdf-export-actions button { min-height: 38px; padding: 0 14px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; color: #344054; cursor: pointer; font: inherit; }.xdf-export-actions .xdf-export-submit { border-color: #1677ff; background: #1677ff; color: #fff; }.xdf-export-actions button:disabled { cursor: wait; opacity: .7; }
             @media (max-width: 480px) { .xdf-export-fields { grid-template-columns: 1fr; } }
         `;
         document.head.appendChild(style);
