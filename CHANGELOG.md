@@ -4,6 +4,13 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，并遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 新增
+
+- 提供一键安装、自动更新的 Tampermonkey 油猴脚本。
+- 油猴版支持日期选择器、课程明细表和固定五时段月视图，无需运行 Python。
+
 ## [1.0.0] - 2026-07-11
 
 ### 新增

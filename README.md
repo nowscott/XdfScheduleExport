@@ -62,6 +62,10 @@ macOS/Linux 也可以使用启动脚本：
 
 首次运行会打开浏览器，请完成登录。登录状态有效时，后续运行一般不需要再次登录。
 
+### 更便捷：油猴脚本
+
+如果你已在浏览器中登录课表系统，可直接安装 [XDF 课表导出油猴脚本](https://raw.githubusercontent.com/nowscott/XdfScheduleCrawler/main/userscripts/xdf-schedule-export.user.js)。安装后在任意 `we.xdf.cn` 页面点击右下角按钮、选择日期范围即可下载 Excel，无需安装或运行 Python。详细说明见 [userscripts/README.md](userscripts/README.md)。
+
 如需在已有登录状态下无界面运行，可添加 `--headless`：
 
 ```bash
