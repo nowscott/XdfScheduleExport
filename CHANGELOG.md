@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-13
+
+### 界面
+
+- 将右下角导出入口和日期选择弹窗升级为轻盈的液态玻璃视觉风格。
+- 优化快捷日期、日期输入、合并选项和操作按钮的层级与反馈。
+- 补充窄屏布局、键盘关闭、焦点样式和减少动态效果支持。
+
+## [1.2.1] - 2026-07-13
+
 ### 新增
 
 - 提供一键安装、自动更新的 Tampermonkey 油猴脚本。
@@ -40,4 +50,7 @@
 
 - 复用持久化浏览器上下文已有的初始标签页，不再额外打开空白页。
 
+[Unreleased]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.0.0...v1.2.1
 [1.0.0]: https://github.com/nowscott/XdfScheduleCrawler/releases/tag/v1.0.0
