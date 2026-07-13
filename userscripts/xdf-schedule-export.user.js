@@ -20,13 +20,6 @@
     const MAX_CONCURRENT_REQUESTS = 3;
     const PREFERENCES_KEY = 'xdf-schedule-export-preferences-v1';
     const WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
-    const EMPTY_SLOT_LABELS = [
-        '08:00–10:00  无课',
-        '10:00/10:20 时段  无课',
-        '13:40–15:40  无课',
-        '16:00–18:00  无课',
-        '18:00/18:30 时段  无课',
-    ];
     const FIELD_NAME_MAP = {
         courseName: '课程名称', coursename: '课程名称', name: '课程名称',
         className: '课程名称', classname: '课程名称', course_name: '课程名称',
@@ -275,16 +268,6 @@
         return match ? match[1].trim() : room.replace('万博敏捷广场', '');
     }
 
-    function slotIndex(startTime) {
-        const [hour, minute] = startTime.split(':').map(Number);
-        const total = hour * 60 + minute;
-        if (total < 9 * 60 + 30) return 0;
-        if (total < 12 * 60 + 30) return 1;
-        if (total < 15 * 60) return 2;
-        if (total < 17 * 60 + 30) return 3;
-        return 4;
-    }
-
     function monthWeeks(year, month) {
         const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
         const days = new Date(year, month, 0).getDate();
@@ -311,7 +294,6 @@
     }
 
     function createMonthSheet(year, month, lessons) {
-        const sheet = XLSX.utils.aoa_to_sheet(Array.from({ length: 3 + monthWeeks(year, month).length * 6 }, () => Array(7).fill('')));
         const byDate = new Map();
         lessons.forEach((lesson) => {
             const date = String(lesson._date || '').slice(0, 10);
@@ -321,22 +303,31 @@
         });
         byDate.forEach((entries) => entries.sort((a, b) => String(a.lessonStartTime || '').localeCompare(String(b.lessonStartTime || ''))));
         const weeks = monthWeeks(year, month);
+        const lessonRowsByWeek = weeks.map((week) => Math.max(1, ...week.map((day) => {
+            if (!day) return 0;
+            const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            return (byDate.get(dateKey) || []).length;
+        })));
+        const totalRows = 3 + lessonRowsByWeek.reduce((sum, lessonRows) => sum + 1 + lessonRows, 0);
+        const sheet = XLSX.utils.aoa_to_sheet(Array.from({ length: totalRows }, () => Array(7).fill('')));
         sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }];
         sheet['!cols'] = Array.from({ length: 7 }, () => ({ wch: 27 }));
-        sheet['!rows'] = [{ hpt: 40 }, { hpt: 24 }, { hpt: 28 }, ...weeks.flatMap(() => [{ hpt: 22 }, ...Array.from({ length: 5 }, () => ({ hpt: 23 }))])];
+        sheet['!rows'] = [{ hpt: 40 }, { hpt: 24 }, { hpt: 28 }, ...lessonRowsByWeek.flatMap((lessonRows) => [{ hpt: 22 }, ...Array.from({ length: lessonRows }, () => ({ hpt: 23 }))])];
+        sheet['!ref'] = `A1:G${totalRows}`;
 
         cell(sheet, 0, 0, `${year} 年 ${month} 月课程月视图`, { font: font(20, { bold: true, color: { rgb: COLORS.titleText } }), fill: fill(COLORS.header), alignment: alignment('center') });
-        cell(sheet, 1, 0, `共 ${lessons.length} 节课 · ${byDate.size} 个有课日期 · 每个日期固定 5 个时段，一节课占一行`, { font: font(10, { color: { rgb: COLORS.summaryText } }), fill: fill(COLORS.date), alignment: alignment('center') });
+        cell(sheet, 1, 0, `共 ${lessons.length} 节课 · ${byDate.size} 个有课日期 · 按每天实际课程逐行显示`, { font: font(10, { color: { rgb: COLORS.summaryText } }), fill: fill(COLORS.date), alignment: alignment('center') });
         WEEKDAYS.forEach((weekday, column) => {
             cell(sheet, 2, column, weekday, { font: font(11, { bold: true, color: { rgb: COLORS.titleText } }), fill: fill(COLORS.weekday), alignment: alignment('center'), border: THIN_BORDER });
         });
 
+        let dateRow = 3;
         weeks.forEach((week, weekIndex) => {
-            const dateRow = 3 + weekIndex * 6;
+            const lessonRows = lessonRowsByWeek[weekIndex];
             week.forEach((day, weekdayIndex) => {
                 const isWeekend = weekdayIndex >= 5;
                 if (!day) {
-                    for (let slot = 0; slot < 6; slot += 1) cell(sheet, dateRow + slot, weekdayIndex, '', { fill: fill(COLORS.outside), border: THIN_BORDER });
+                    for (let rowOffset = 0; rowOffset <= lessonRows; rowOffset += 1) cell(sheet, dateRow + rowOffset, weekdayIndex, '', { fill: fill(COLORS.outside), border: THIN_BORDER });
                     return;
                 }
                 const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -345,25 +336,20 @@
                     font: font(10, { bold: true, color: { rgb: COLORS.summaryText } }),
                     fill: fill(dayLessons.length ? COLORS.activeDate : (isWeekend ? COLORS.weekendDate : COLORS.date)), alignment: alignment('left'), border: THIN_BORDER,
                 });
-                const slots = Array(5).fill(null);
-                dayLessons.forEach((lesson) => {
-                    const start = timePart(lesson.lessonStartTime);
-                    if (!start) return;
-                    const index = slotIndex(start);
-                    if (slots[index]) throw new Error(`${dateKey} 的第 ${index + 1} 时段存在多节课程，无法放入固定五行月视图。`);
-                    slots[index] = lesson;
-                });
-                slots.forEach((lesson, slot) => {
-                    const row = dateRow + slot + 1;
+                for (let lessonIndex = 0; lessonIndex < lessonRows; lessonIndex += 1) {
+                    const lesson = dayLessons[lessonIndex];
+                    const row = dateRow + lessonIndex + 1;
                     if (!lesson) {
-                        cell(sheet, row, weekdayIndex, EMPTY_SLOT_LABELS[slot], { font: font(8, { color: { rgb: COLORS.muted } }), fill: fill(isWeekend ? COLORS.weekend : COLORS.white), alignment: alignment('left'), border: THIN_BORDER });
-                        return;
+                        const noCourse = lessonIndex === 0 && !dayLessons.length ? '无课' : '';
+                        cell(sheet, row, weekdayIndex, noCourse, { font: font(8, { color: { rgb: COLORS.muted } }), fill: fill(isWeekend ? COLORS.weekend : COLORS.white), alignment: alignment('left'), border: THIN_BORDER });
+                        continue;
                     }
                     const start = timePart(lesson.lessonStartTime);
                     const end = timePart(lesson.lessonEndTime);
                     cell(sheet, row, weekdayIndex, `${start}–${end}  ${studentName(lesson)} · ${shortRoom(lesson.roomName)}`, { font: font(8, { bold: true, color: { rgb: COLORS.courseText } }), fill: fill(COLORS.course), alignment: alignment('left'), border: THIN_BORDER });
-                });
+                }
             });
+            dateRow += lessonRows + 1;
         });
         return sheet;
     }
