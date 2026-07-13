@@ -82,6 +82,7 @@ vm.runInNewContext(source, context, { filename: 'xdf-schedule-export.user.js' })
 
 const { exportWorkbook, fetchLessonDetails, loadPreferences, savePreferences, rangeForPreset } = context.__userscriptTestHooks;
 const schedules = [
+    { _date: '2026-07-13', lessonName: '陈同学', courseName: '数学', teacherName: '牛老师', campus: '广州', lessonStartTime: '2026-07-13 08:00:00', lessonEndTime: '2026-07-13 10:00:00', roomName: '个性化V228' },
     { _date: '2026-07-13', lessonName: '王同学', courseName: '数学', teacherName: '牛老师', campus: '广州', lessonStartTime: '2026-07-13 10:20:00', lessonEndTime: '2026-07-13 12:20:00', roomName: '个性化V229' },
     { _date: '2026-08-03', lessonName: '李同学', courseName: '数学', teacherName: '牛老师', campus: '广州', lessonStartTime: '2026-08-03 16:00:00', lessonEndTime: '2026-08-03 18:00:00', roomName: '个性化V230' },
 ];
@@ -91,7 +92,11 @@ let write = xlsx.writes.at(-1);
 assert.deepEqual(write.workbook.SheetNames, ['月视图', '统计', '详细课表']);
 assert.equal(write.workbook.Sheets.月视图.A1.v, '2026 年 7 月课程月视图');
 assert.ok(Object.values(write.workbook.Sheets.月视图).some((cell) => cell?.v === '2026 年 8 月课程月视图'));
+assert.ok(Object.values(write.workbook.Sheets.月视图).some((cell) => cell?.v?.includes('08:00–10:00  陈同学')));
+assert.ok(Object.values(write.workbook.Sheets.月视图).some((cell) => cell?.v?.includes('10:20–12:20  王同学')));
+assert.ok(!Object.values(write.workbook.Sheets.月视图).some((cell) => cell?.v?.includes('08:00–10:00  无课')));
 assert.equal(write.workbook.Sheets.统计.A1.v, '课表导出统计');
+assert.equal(write.workbook.Sheets.统计['!ref'], 'A1:J17');
 assert.equal(write.workbook.Sheets.详细课表.A1.v, '日期');
 
 exportWorkbook(schedules, '2026-07-13', '2026-08-31', { combineMonthViews: false });
