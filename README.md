@@ -1,83 +1,40 @@
 # XDF 课表导出工具
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Tampermonkey](https://img.shields.io/badge/Tampermonkey-Userscript-00485B?logo=tampermonkey&logoColor=white)](https://www.tampermonkey.net/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-一个本地运行的课表导出工具。它通过 Playwright 打开你有权访问的课表页面，复用本机浏览器登录状态获取课程数据，并生成便于查看和筛选的 Excel 工作簿。
+一个浏览器本地运行的油猴脚本。它直接复用你在课表页面中的登录状态，生成便于查看和筛选的 Excel 工作簿；无需安装 Python 或运行本地服务。
 
 > 非官方项目，与新东方及其关联方无关。本项目不提供账号、绕过登录的功能，也不应被用于访问无权查看的数据。
 
 ## 功能
 
-- 在浏览器中手动登录，不在代码中保存账号或密码
-- 按任意日期范围批量抓取课程
-- 跨月日期范围会自动按月份拆分请求
-- 自动跳过无课日期，并按日期、时间排序
-- 导出完整课表明细
-- 为每个月生成日历式月视图
+- 一键安装后，在已登录的 `we.xdf.cn` 页面直接使用
+- 日期快捷选择：本周、下周、本月、下月、本学期
+- 记住上一次导出的日期范围和月视图偏好（仅浏览器本地）
+- 跨月日期范围会自动按月份拆分请求，课程详情最多三路并发读取
+- 某些日期读取失败时先导出成功部分，并可一键重试失败日期
+- 导出顺序为：月视图、统计、详细课表
+- 默认把跨月月视图连续放在同一张工作表，也可关闭该选项拆分为每月一张
 - 每个日期固定显示 5 个时段，一节课占一行
-- 绿色表示有课，空闲时段明确标注“无课”
-- 浏览器登录状态保存在本机，方便下次继续使用
-
-## 环境要求
-
-- macOS、Windows 或 Linux
-- Python 3.10+
-- 你有权访问的课表页面账号
+- 统计页按学员、课程、老师、校区汇总节数
 
 ## 安装
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m playwright install chromium
-```
+1. 在浏览器扩展商店安装 Tampermonkey。
+2. 点击 [一键安装油猴脚本](https://raw.githubusercontent.com/nowscott/XdfScheduleCrawler/main/userscripts/xdf-schedule-export.user.js)。
+3. 正常登录 `https://we.xdf.cn/main/home` 或任意 `we.xdf.cn` 页面。
+4. 点击右下角“导出课表 Excel”，选择日期范围或使用快捷范围。
 
-Windows PowerShell 激活虚拟环境：
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-## 使用
-
-交互输入日期：
-
-```bash
-python main.py
-```
-
-直接指定日期：
-
-```bash
-python main.py --start 2026-07-13 --end 2026-08-31
-```
-
-macOS/Linux 也可以使用启动脚本：
-
-```bash
-./run.sh --start 2026-07-13 --end 2026-08-31
-```
-
-首次运行会打开浏览器，请完成登录。登录状态有效时，后续运行一般不需要再次登录。
-
-### 更便捷：油猴脚本
-
-如果你已在浏览器中登录课表系统，可直接安装 [XDF 课表导出油猴脚本](https://raw.githubusercontent.com/nowscott/XdfScheduleCrawler/main/userscripts/xdf-schedule-export.user.js)。安装后在任意 `we.xdf.cn` 页面点击右下角按钮、选择日期范围即可下载 Excel，无需安装或运行 Python。详细说明见 [userscripts/README.md](userscripts/README.md)。
-
-如需在已有登录状态下无界面运行，可添加 `--headless`：
-
-```bash
-python main.py --start 2026-07-13 --end 2026-08-31 --headless
-```
+脚本会通过 GitHub 自动检查更新，日后不需要再次复制粘贴。
 
 ## 输出
 
-文件默认保存在 `output/`，每个 Excel 包含：
+每个 Excel 依次包含：
 
-- `课表`：完整课程明细，可筛选、排序
-- `YYYY年M月月视图`：星期一到星期日的月历布局
+- `月视图`：默认将所选范围内的各个月份连续放在一张工作表；关闭“同一工作表”选项后则为每月一张。
+- `统计`：按学员、课程、老师、校区汇总节数，并显示范围、课时、时长等概览。
+- `详细课表`：完整原始课程明细，可筛选、排序。
 
 月视图中每个日期固定包含以下 5 行：
 
@@ -89,26 +46,9 @@ python main.py --start 2026-07-13 --end 2026-08-31 --headless
 
 实际有课时显示真实的起止时间、学生和教室编号；没有课程时显示“无课”。
 
-## 可选环境变量
-
-| 变量 | 用途 |
-| --- | --- |
-| `XDF_USER_DATA_DIR` | 浏览器登录数据目录 |
-| `XDF_EXPORT_DIR` | Excel 输出目录 |
-| `XDF_LOGIN_TIMEOUT` | 等待登录秒数，默认 180 |
-| `XDF_REQUEST_INTERVAL` | 每次接口请求的间隔秒数，默认 0.4 |
-| `XDF_SCHEDULE_PAGE_URL` | 覆盖课表页面地址 |
-| `XDF_API_BASE` | 覆盖接口基础地址 |
-
-## 测试
-
-```bash
-python -m unittest discover -s tests -v
-```
-
 ## 隐私与安全
 
-`browser_data/` 中可能包含登录 Cookie 和其他浏览器会话数据，已经加入 `.gitignore`。不要把这个目录、真实课程 Excel、接口响应 JSON 或截图提交到 GitHub。
+脚本不会保存账号、密码或课程内容。它只会在浏览器本地保存你上一次使用的日期范围与月视图布局选项。不要把真实课程 Excel、接口响应 JSON 或截图提交到 GitHub。
 
 本项目仅用于整理你有权访问的课表数据。请遵守所在机构的使用规则，不要高频请求、共享他人信息，或将工具用于未授权的数据获取。
 
@@ -128,12 +68,9 @@ python -m unittest discover -s tests -v
 
 ```text
 XdfScheduleCrawler/
-├── main.py             # 命令行入口
-├── crawler.py          # 浏览器登录与课表抓取
-├── excel_exporter.py   # 明细表及五时段月视图
-├── config.py           # 路径、接口和运行参数
-├── CHANGELOG.md         # 版本变更记录
-├── requirements.txt    # Python 依赖
-├── run.sh              # macOS/Linux 启动脚本
-└── tests/              # 本地单元测试
+├── userscripts/
+│   ├── xdf-schedule-export.user.js  # 油猴脚本
+│   └── README.md                     # 安装与使用说明
+├── CHANGELOG.md
+└── LICENSE
 ```

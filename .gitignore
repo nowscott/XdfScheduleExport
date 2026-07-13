@@ -1,19 +1,9 @@
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.python-version
-.pytest_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# 登录态与本机浏览器数据（含 Cookie，严禁提交）
+# 本机浏览器登录态、缓存与导出结果
 browser_data/
-
-# 抓取结果与调试产物
 output/
+__pycache__/
+tests/__pycache__/
+.venv/
 *.xlsx
 *.xls
 *.csv
@@ -24,10 +14,7 @@ output/
 *.har
 *.webp
 
-# 本机环境变量与运行日志
-.env
-.env.*
-!.env.example
+# 运行日志
 *.log
 
 # 编辑器与系统文件

@@ -4,19 +4,14 @@
 
 ## 本地开发
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m playwright install chromium
-python -m unittest discover -s tests -v
-```
+- 修改 `userscripts/xdf-schedule-export.user.js` 后，先用 `node --check` 验证语法。
+- 在有权访问的测试账号中，从油猴编辑器临时安装脚本后验证日期选择、导出顺序与失败重试。
 
 ## 提交建议
 
-- 保持代码兼容 Python 3.10+。
-- 为行为改动补充或更新单元测试。
-- 不要提交 `browser_data/`、`output/`、真实接口响应、截图或任何包含个人信息的文件。
+- 保持脚本在当前稳定版 Tampermonkey 与 Chromium 浏览器中可用。
+- 为行为改动补充或更新验证步骤。
+- 不要提交真实导出的 Excel、接口响应、截图或任何包含个人信息的文件。
 - 如果涉及课表接口，请只在你有权访问的账号和环境中验证，并保持低频请求。
 
 ## 报告安全问题
