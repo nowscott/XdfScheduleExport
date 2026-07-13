@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XDF 课表导出
 // @namespace    https://github.com/nowscott/XdfScheduleCrawler
-// @version      1.2.0
+// @version      1.2.1
 // @description  在已登录的课表页面中导出月视图、统计和课表明细。
 // @author       nowscott
 // @match        https://we.xdf.cn/*
