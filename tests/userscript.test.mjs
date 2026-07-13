@@ -40,7 +40,16 @@ function createXlsxSpy() {
 }
 
 const sourcePath = new URL('../userscripts/xdf-schedule-export.user.js', import.meta.url);
-const source = fs.readFileSync(sourcePath, 'utf8').replace(
+const userscriptSource = fs.readFileSync(sourcePath, 'utf8');
+assert.match(userscriptSource, /@version\s+1\.3\.0/);
+assert.match(userscriptSource, /backdrop-filter: blur\(36px\) saturate\(180%\)/);
+assert.match(userscriptSource, /@media \(max-width: 600px\)/);
+assert.match(userscriptSource, /@media \(prefers-reduced-motion: reduce\)/);
+assert.match(userscriptSource, /aria-labelledby="xdf-export-range-label"/);
+assert.match(userscriptSource, /event\.key === 'Escape'/);
+assert.match(userscriptSource, /item\.setAttribute\('aria-pressed', String\(active\)\)/);
+
+const source = userscriptSource.replace(
     '    addExportButton();',
     '    globalThis.__userscriptTestHooks = { exportWorkbook, fetchLessonDetails, loadPreferences, savePreferences, rangeForPreset };',
 );
