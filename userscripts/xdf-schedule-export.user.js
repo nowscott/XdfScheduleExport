@@ -472,10 +472,15 @@
             cell(sheet, row, 0, `待重试日期：${failedDays.map(({ day }) => day).join('、')}`, { font: font(9, { color: { rgb: '9C5700' } }), fill: fill('FFEB9C'), alignment: alignment('left'), border: THIN_BORDER });
         }
         const tableRow = 12;
-        addSummaryTable(sheet, tableRow, 0, '按学员统计', '学员', aggregateLessons(schedules, (lesson) => studentName(lesson) || '未填写'));
-        addSummaryTable(sheet, tableRow, 3, '按课程统计', '课程', aggregateLessons(schedules, (lesson) => valueFromLesson(lesson, ['courseName', 'className', 'name'])));
-        addSummaryTable(sheet, tableRow, 6, '按老师统计', '老师', aggregateLessons(schedules, (lesson) => valueFromLesson(lesson, ['teacherName', 'teacher', 'instructor'])));
-        addSummaryTable(sheet, tableRow, 9, '按校区统计', '校区', aggregateLessons(schedules, (lesson) => valueFromLesson(lesson, ['campus', 'schoolName', 'school', 'branch'])));
+        const tables = [
+            ['按学员统计', '学员', aggregateLessons(schedules, (lesson) => studentName(lesson) || '未填写')],
+            ['按课程统计', '课程', aggregateLessons(schedules, (lesson) => valueFromLesson(lesson, ['courseName', 'className', 'name']))],
+            ['按老师统计', '老师', aggregateLessons(schedules, (lesson) => valueFromLesson(lesson, ['teacherName', 'teacher', 'instructor']))],
+            ['按校区统计', '校区', aggregateLessons(schedules, (lesson) => valueFromLesson(lesson, ['campus', 'schoolName', 'school', 'branch']))],
+        ];
+        tables.forEach(([title, header, entries], index) => addSummaryTable(sheet, tableRow, index * 3, title, header, entries));
+        const maxEntries = Math.max(...tables.map(([, , entries]) => entries.length));
+        sheet['!ref'] = `A1:J${tableRow + maxEntries + 2}`;
         sheet['!rows'] = [{ hpt: 36 }];
         return sheet;
     }

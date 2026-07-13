@@ -92,6 +92,7 @@ assert.deepEqual(write.workbook.SheetNames, ['月视图', '统计', '详细课�
 assert.equal(write.workbook.Sheets.月视图.A1.v, '2026 年 7 月课程月视图');
 assert.ok(Object.values(write.workbook.Sheets.月视图).some((cell) => cell?.v === '2026 年 8 月课程月视图'));
 assert.equal(write.workbook.Sheets.统计.A1.v, '课表导出统计');
+assert.equal(write.workbook.Sheets.统计['!ref'], 'A1:J16');
 assert.equal(write.workbook.Sheets.详细课表.A1.v, '日期');
 
 exportWorkbook(schedules, '2026-07-13', '2026-08-31', { combineMonthViews: false });
