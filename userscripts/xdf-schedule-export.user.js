@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         XDF 课表导出
 // @namespace    https://github.com/nowscott/XdfScheduleCrawler
-// @version      1.3.4
+// @version      1.3.5
 // @description  在已登录的课表页面中导出月视图、统计和课表明细。
 // @author       nowscott
 // @match        https://we.xdf.cn/*
 // @require      https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js
-// @downloadURL  https://raw.githubusercontent.com/nowscott/XdfScheduleCrawler/main/userscripts/xdf-schedule-export.user.js
-// @updateURL    https://raw.githubusercontent.com/nowscott/XdfScheduleCrawler/main/userscripts/xdf-schedule-export.user.js
-// @supportURL   https://github.com/nowscott/XdfScheduleCrawler/issues
+// @downloadURL  https://raw.githubusercontent.com/nowscott/XdfScheduleExport/main/userscripts/xdf-schedule-export.user.js
+// @updateURL    https://raw.githubusercontent.com/nowscott/XdfScheduleExport/main/userscripts/xdf-schedule-export.user.js
+// @supportURL   https://github.com/nowscott/XdfScheduleExport/issues
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==

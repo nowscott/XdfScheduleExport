@@ -41,7 +41,7 @@ function createXlsxSpy() {
 
 const sourcePath = new URL('../userscripts/xdf-schedule-export.user.js', import.meta.url);
 const userscriptSource = fs.readFileSync(sourcePath, 'utf8');
-assert.match(userscriptSource, /@version\s+1\.3\.4/);
+assert.match(userscriptSource, /@version\s+1\.3\.5/);
 assert.match(userscriptSource, /backdrop-filter: blur\(36px\) saturate\(180%\)/);
 assert.match(userscriptSource, /@media \(max-width: 600px\)/);
 assert.match(userscriptSource, /@media \(prefers-reduced-motion: reduce\)/);

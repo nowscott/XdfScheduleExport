@@ -5,7 +5,7 @@
 ## 安装与使用
 
 1. 在浏览器扩展商店安装 Tampermonkey。
-2. 点击 [一键安装油猴脚本](https://raw.githubusercontent.com/nowscott/XdfScheduleCrawler/main/userscripts/xdf-schedule-export.user.js)，在 Tampermonkey 安装页确认安装。
+2. 点击 [一键安装油猴脚本](https://raw.githubusercontent.com/nowscott/XdfScheduleExport/main/userscripts/xdf-schedule-export.user.js)，在 Tampermonkey 安装页确认安装。
 3. 正常登录 `https://we.xdf.cn/main/home` 或任意 `we.xdf.cn` 页面。
 4. 点击右下角“导出课表 Excel”，使用“本周、本月、本学期”等快捷范围，或在弹窗日历中选择开始与结束日期。
 
