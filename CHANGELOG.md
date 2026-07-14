@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-07-14
+
+### 变更
+
+- GitHub 仓库更名为 `XdfScheduleExport`，并同步更新油猴脚本的安装、自动更新和支持链接。
+
 ## [1.3.4] - 2026-07-14
 
 ### 新增
@@ -71,9 +77,10 @@
 
 - 复用持久化浏览器上下文已有的初始标签页，不再额外打开空白页。
 
-[Unreleased]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.3.4...HEAD
-[1.3.4]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.3.3...v1.3.4
-[1.3.3]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.3.0...v1.3.3
-[1.3.0]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.2.1...v1.3.0
-[1.2.1]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.0.0...v1.2.1
-[1.0.0]: https://github.com/nowscott/XdfScheduleCrawler/releases/tag/v1.0.0
+[Unreleased]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.5...HEAD
+[1.3.5]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.4...v1.3.5
+[1.3.4]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.3...v1.3.4
+[1.3.3]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.0...v1.3.3
+[1.3.0]: https://github.com/nowscott/XdfScheduleExport/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/nowscott/XdfScheduleExport/compare/v1.0.0...v1.2.1
+[1.0.0]: https://github.com/nowscott/XdfScheduleExport/releases/tag/v1.0.0
