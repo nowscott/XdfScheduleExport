@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-07-14
+
+### 修复
+
+- 月视图改为按每周真实起止时间段排布，避免不同时间段的课程对齐在同一横排。
+
+### 界面
+
+- 右侧课表导出入口支持拖动定位，并默认展示在页面右上约 1/4 处。
+- 鼠标离开后入口会自动向右侧收起为仅露出约 18px 的小水滴；移回后柔和变回圆形下载按钮，不再显示文字。
+
 ## [1.3.0] - 2026-07-13
 
 ### 界面
@@ -50,7 +61,8 @@
 
 - 复用持久化浏览器上下文已有的初始标签页，不再额外打开空白页。
 
-[Unreleased]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.3.0...v1.3.3
 [1.3.0]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/nowscott/XdfScheduleCrawler/compare/v1.0.0...v1.2.1
 [1.0.0]: https://github.com/nowscott/XdfScheduleCrawler/releases/tag/v1.0.0

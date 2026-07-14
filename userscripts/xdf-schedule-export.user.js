@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XDF 课表导出
 // @namespace    https://github.com/nowscott/XdfScheduleCrawler
-// @version      1.3.0
+// @version      1.3.3
 // @description  在已登录的课表页面中导出月视图、统计和课表明细。
 // @author       nowscott
 // @match        https://we.xdf.cn/*
@@ -19,6 +19,7 @@
     const API_BASE = 'https://gw-xeasy.xdf.cn/xeasy-srv-teachinghub';
     const MAX_CONCURRENT_REQUESTS = 3;
     const PREFERENCES_KEY = 'xdf-schedule-export-preferences-v1';
+    const FLOATING_BUTTON_KEY = 'xdf-schedule-export-floating-button-v1';
     const WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
     const FIELD_NAME_MAP = {
         courseName: '课程名称', coursename: '课程名称', name: '课程名称',
@@ -132,6 +133,19 @@
 
     function savePreferences({ startDate, endDate, combineMonthViews }) {
         localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ startDate, endDate, combineMonthViews }));
+    }
+
+    function loadFloatingPosition() {
+        try {
+            const value = JSON.parse(localStorage.getItem(FLOATING_BUTTON_KEY) || 'null');
+            return Number.isFinite(value?.x) && Number.isFinite(value?.y) ? { x: value.x, y: value.y } : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function saveFloatingPosition(position) {
+        localStorage.setItem(FLOATING_BUTTON_KEY, JSON.stringify(position));
     }
 
     async function requestJson(url, options) {
@@ -257,6 +271,12 @@
         return match ? match[1] : '';
     }
 
+    function timeSlotKey(lesson) {
+        const start = timePart(lesson.lessonStartTime || lesson.startTime);
+        const end = timePart(lesson.lessonEndTime || lesson.endTime);
+        return start && end ? `${start}–${end}` : '时间待确认';
+    }
+
     function studentName(lesson) {
         if (lesson.lessonName) return String(lesson.lessonName);
         return (lesson.studentList || []).map((item) => item.studentName || '').filter(Boolean).join('、');
@@ -303,11 +323,23 @@
         });
         byDate.forEach((entries) => entries.sort((a, b) => String(a.lessonStartTime || '').localeCompare(String(b.lessonStartTime || ''))));
         const weeks = monthWeeks(year, month);
-        const lessonRowsByWeek = weeks.map((week) => Math.max(1, ...week.map((day) => {
-            if (!day) return 0;
-            const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            return (byDate.get(dateKey) || []).length;
-        })));
+        const timeRowsByWeek = weeks.map((week) => {
+            const slots = new Map();
+            week.forEach((day) => {
+                if (!day) return;
+                const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const countsBySlot = new Map();
+                (byDate.get(dateKey) || []).forEach((lesson) => {
+                    const slot = timeSlotKey(lesson);
+                    countsBySlot.set(slot, (countsBySlot.get(slot) || 0) + 1);
+                });
+                countsBySlot.forEach((count, slot) => slots.set(slot, Math.max(slots.get(slot) || 0, count)));
+            });
+            return [...slots.entries()]
+                .sort(([a], [b]) => a.localeCompare(b))
+                .flatMap(([slot, count]) => Array.from({ length: count }, () => slot));
+        });
+        const lessonRowsByWeek = timeRowsByWeek.map((timeRows) => Math.max(1, timeRows.length));
         const totalRows = 3 + lessonRowsByWeek.reduce((sum, lessonRows) => sum + 1 + lessonRows, 0);
         const sheet = XLSX.utils.aoa_to_sheet(Array.from({ length: totalRows }, () => Array(7).fill('')));
         sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }];
@@ -316,7 +348,7 @@
         sheet['!ref'] = `A1:G${totalRows}`;
 
         cell(sheet, 0, 0, `${year} 年 ${month} 月课程月视图`, { font: font(20, { bold: true, color: { rgb: COLORS.titleText } }), fill: fill(COLORS.header), alignment: alignment('center') });
-        cell(sheet, 1, 0, `共 ${lessons.length} 节课 · ${byDate.size} 个有课日期 · 按每天实际课程逐行显示`, { font: font(10, { color: { rgb: COLORS.summaryText } }), fill: fill(COLORS.date), alignment: alignment('center') });
+        cell(sheet, 1, 0, `共 ${lessons.length} 节课 · ${byDate.size} 个有课日期 · 同一横排仅对应同一时间段`, { font: font(10, { color: { rgb: COLORS.summaryText } }), fill: fill(COLORS.date), alignment: alignment('center') });
         WEEKDAYS.forEach((weekday, column) => {
             cell(sheet, 2, column, weekday, { font: font(11, { bold: true, color: { rgb: COLORS.titleText } }), fill: fill(COLORS.weekday), alignment: alignment('center'), border: THIN_BORDER });
         });
@@ -324,6 +356,7 @@
         let dateRow = 3;
         weeks.forEach((week, weekIndex) => {
             const lessonRows = lessonRowsByWeek[weekIndex];
+            const timeRows = timeRowsByWeek[weekIndex];
             week.forEach((day, weekdayIndex) => {
                 const isWeekend = weekdayIndex >= 5;
                 if (!day) {
@@ -336,8 +369,16 @@
                     font: font(10, { bold: true, color: { rgb: COLORS.summaryText } }),
                     fill: fill(dayLessons.length ? COLORS.activeDate : (isWeekend ? COLORS.weekendDate : COLORS.date)), alignment: alignment('left'), border: THIN_BORDER,
                 });
+                const lessonsBySlot = new Map();
+                dayLessons.forEach((lesson) => {
+                    const slot = timeSlotKey(lesson);
+                    const entries = lessonsBySlot.get(slot) || [];
+                    entries.push(lesson);
+                    lessonsBySlot.set(slot, entries);
+                });
                 for (let lessonIndex = 0; lessonIndex < lessonRows; lessonIndex += 1) {
-                    const lesson = dayLessons[lessonIndex];
+                    const slot = timeRows[lessonIndex];
+                    const lesson = slot ? (lessonsBySlot.get(slot) || []).shift() : undefined;
                     const row = dateRow + lessonIndex + 1;
                     if (!lesson) {
                         const noCourse = lessonIndex === 0 && !dayLessons.length ? '无课' : '';
@@ -615,15 +656,88 @@
         const button = document.createElement('button');
         button.id = 'xdf-schedule-export-button';
         button.type = 'button';
-        button.innerHTML = '<span class="xdf-export-button-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.75v9m0 0 3.5-3.5M10 11.75l-3.5-3.5M3.75 14.25v1A1.75 1.75 0 0 0 5.5 17h9a1.75 1.75 0 0 0 1.75-1.75v-1"/></svg></span><span>导出课表</span>';
-        button.title = '导出月视图、统计和详细课表';
-        button.addEventListener('click', showExportDialog);
+        button.setAttribute('aria-label', '导出课表');
+        button.innerHTML = '<span class="xdf-export-button-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.75v9m0 0 3.5-3.5M10 11.75l-3.5-3.5M3.75 14.25v1A1.75 1.75 0 0 0 5.5 17h9a1.75 1.75 0 0 0 1.75-1.75v-1"/></svg></span>';
+        button.title = '拖动可移动；点击导出课表';
         document.body.appendChild(button);
+
+        const edgePadding = 12;
+        let currentPosition = null;
+        let dragState = null;
+        let dockTimer = null;
+        let didDrag = false;
+        let docked = false;
+
+        function clampPosition(x, y) {
+            const width = button.offsetWidth || 52;
+            const height = button.offsetHeight || 52;
+            return {
+                x: Math.min(Math.max(edgePadding, x), Math.max(edgePadding, window.innerWidth - width - edgePadding)),
+                y: Math.min(Math.max(edgePadding, y), Math.max(edgePadding, window.innerHeight - height - edgePadding)),
+            };
+        }
+
+        function defaultPosition() {
+            const width = button.offsetWidth || 52;
+            const height = button.offsetHeight || 52;
+            return clampPosition(window.innerWidth - width - 24, window.innerHeight * .25 - height / 2);
+        }
+
+        function applyPosition(position) {
+            currentPosition = clampPosition(position.x, position.y);
+            button.style.left = `${Math.round(currentPosition.x)}px`;
+            button.style.top = `${Math.round(currentPosition.y)}px`;
+            button.style.right = 'auto';
+            button.style.bottom = 'auto';
+        }
+
+        function revealButton() {
+            window.clearTimeout(dockTimer);
+            if (!docked) return;
+            docked = false;
+            button.classList.remove('is-docked', 'is-docked-left', 'is-docked-right');
+            delete button.dataset.dockSide;
+            applyPosition(currentPosition);
+        }
+
+        function dockButton() {
+            if (docked || !currentPosition) return;
+            const dockWidth = 42;
+            const dockHeight = 42;
+            const side = currentPosition.x + button.offsetWidth / 2 < window.innerWidth / 2 ? 'left' : 'right';
+            const top = Math.min(Math.max(edgePadding, currentPosition.y), Math.max(edgePadding, window.innerHeight - dockHeight - edgePadding));
+            docked = true;
+            button.dataset.dockSide = side;
+            button.classList.add('is-docked', `is-docked-${side}`);
+            button.style.left = `${side === 'left' ? -24 : window.innerWidth - 18}px`;
+            button.style.top = `${Math.round(top)}px`;
+        }
+
+        function scheduleDock() {
+            window.clearTimeout(dockTimer);
+            if (!dragState && !docked) dockTimer = window.setTimeout(dockButton, 1100);
+        }
+
+        function finishDragging(event) {
+            if (!dragState || event.pointerId !== dragState.pointerId) return;
+            if (button.hasPointerCapture?.(event.pointerId)) button.releasePointerCapture(event.pointerId);
+            dragState = null;
+            button.classList.remove('is-dragging');
+            if (didDrag) saveFloatingPosition(currentPosition);
+            window.setTimeout(() => { didDrag = false; }, 0);
+            scheduleDock();
+        }
+
         const style = document.createElement('style');
         style.textContent = `
-            #xdf-schedule-export-button { position: fixed; right: 24px; bottom: 24px; z-index: 99999; display: inline-flex; align-items: center; gap: 9px; min-height: 48px; padding: 7px 17px 7px 8px; border: 1px solid rgb(255 255 255 / 72%); border-radius: 999px; background: linear-gradient(135deg, rgb(255 255 255 / 86%), rgb(239 246 255 / 68%)); color: #17426d; box-shadow: 0 12px 32px rgb(15 54 92 / 18%), inset 0 1px 0 rgb(255 255 255 / 86%); backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%); cursor: pointer; font: 600 14px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; letter-spacing: -.1px; transition: transform .2s ease, box-shadow .2s ease, background .2s ease; }
-            #xdf-schedule-export-button:hover { transform: translateY(-2px) scale(1.015); background: linear-gradient(135deg, rgb(255 255 255 / 96%), rgb(232 243 255 / 82%)); box-shadow: 0 16px 38px rgb(15 54 92 / 23%), inset 0 1px 0 #fff; }
-            #xdf-schedule-export-button:active { transform: translateY(0) scale(.98); }
+            #xdf-schedule-export-button { position: fixed; top: calc(25% - 26px); right: 24px; z-index: 99999; display: grid; box-sizing: border-box; width: 52px; height: 52px; place-items: center; overflow: hidden; padding: 6px; border: 1px solid rgb(255 255 255 / 72%); border-radius: 50%; background: linear-gradient(135deg, rgb(255 255 255 / 86%), rgb(239 246 255 / 68%)); color: #17426d; box-shadow: 0 12px 32px rgb(15 54 92 / 18%), inset 0 1px 0 rgb(255 255 255 / 86%); backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%); cursor: grab; touch-action: none; transition: left .46s cubic-bezier(.16, 1, .3, 1), top .46s cubic-bezier(.16, 1, .3, 1), width .46s cubic-bezier(.16, 1, .3, 1), height .46s cubic-bezier(.16, 1, .3, 1), padding .46s cubic-bezier(.16, 1, .3, 1), border-radius .46s cubic-bezier(.16, 1, .3, 1), box-shadow .3s ease, background .3s ease; }
+            #xdf-schedule-export-button:not(.is-docked):hover { transform: translateY(-2px) scale(1.04); background: linear-gradient(135deg, rgb(255 255 255 / 96%), rgb(232 243 255 / 82%)); box-shadow: 0 16px 38px rgb(15 54 92 / 23%), inset 0 1px 0 #fff; }
+            #xdf-schedule-export-button.is-docked { width: 42px; height: 42px; padding: 5px; background: linear-gradient(145deg, rgb(255 255 255 / 94%), rgb(213 233 255 / 74%)); box-shadow: 0 7px 18px rgb(15 54 92 / 17%), inset 0 1px 0 #fff; }
+            #xdf-schedule-export-button.is-docked-left { border-radius: 0 22px 22px 0; } #xdf-schedule-export-button.is-docked-right { border-radius: 22px 0 0 22px; }
+            #xdf-schedule-export-button.is-docked::after { position: absolute; top: 6px; width: 12px; height: 5px; border-radius: 999px; background: rgb(255 255 255 / 68%); box-shadow: 0 1px 4px rgb(255 255 255 / 45%); content: ''; pointer-events: none; } #xdf-schedule-export-button.is-docked-left::after { right: 7px; } #xdf-schedule-export-button.is-docked-right::after { left: 7px; }
+            #xdf-schedule-export-button.is-docked .xdf-export-button-icon { width: 30px; height: 30px; box-shadow: 0 4px 11px rgb(5 116 246 / 24%), inset 0 1px 1px rgb(255 255 255 / 50%); } #xdf-schedule-export-button.is-docked .xdf-export-button-icon svg { width: 15px; }
+            #xdf-schedule-export-button.is-dragging { cursor: grabbing; transition: none; user-select: none; }
+            #xdf-schedule-export-button:active { cursor: grabbing; }
             #xdf-schedule-export-button:focus-visible { outline: 3px solid rgb(20 122 255 / 28%); outline-offset: 3px; }
             .xdf-export-button-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: linear-gradient(145deg, #3aa0ff, #0878f9 70%); color: #fff; box-shadow: 0 5px 14px rgb(5 116 246 / 28%), inset 0 1px 1px rgb(255 255 255 / 45%); }
             .xdf-export-button-icon svg { width: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
@@ -642,10 +756,48 @@
             .xdf-export-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 17px; }.xdf-export-actions button { min-height: 42px; padding: 0 16px; border: 1px solid rgb(112 137 162 / 20%); border-radius: 13px; background: rgb(255 255 255 / 40%); color: #49627b; cursor: pointer; font: 600 13px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; transition: .18s ease; }.xdf-export-actions button:hover { background: rgb(255 255 255 / 72%); transform: translateY(-1px); }.xdf-export-actions .xdf-export-submit { display: inline-flex; min-width: 124px; align-items: center; justify-content: center; gap: 7px; border-color: rgb(42 130 235 / 42%); background: linear-gradient(145deg, #409dfb, #1175e8); color: #fff; box-shadow: 0 9px 22px rgb(13 105 214 / 25%), inset 0 1px 0 rgb(255 255 255 / 36%); }.xdf-export-submit svg { width: 17px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }.xdf-export-actions .xdf-export-submit:hover { background: linear-gradient(145deg, #53a9ff, #167cf0); box-shadow: 0 11px 25px rgb(13 105 214 / 31%), inset 0 1px 0 rgb(255 255 255 / 40%); }.xdf-export-actions .xdf-export-retry { border-color: rgb(224 155 30 / 30%); background: rgb(255 247 221 / 62%); color: #92540b; }.xdf-export-actions button:disabled, .xdf-export-presets button:disabled { cursor: wait; opacity: .56; transform: none; }
             @keyframes xdf-export-fade-in { from { opacity: 0; } to { opacity: 1; } } @keyframes xdf-export-card-in { from { opacity: 0; transform: translateY(12px) scale(.975); } to { opacity: 1; transform: translateY(0) scale(1); } }
             @media (max-width: 600px) { #xdf-schedule-export-dialog { align-items: end; padding: 12px; }.xdf-export-card { border-radius: 25px; }.xdf-export-content { padding: 22px 18px 18px; }.xdf-export-heading p { max-width: 250px; }.xdf-export-presets { grid-template-columns: repeat(3, 1fr); }.xdf-export-fields { grid-template-columns: 1fr; }.xdf-export-range-arrow { display: none; }.xdf-export-actions { display: grid; grid-template: "cancel submit" auto "retry retry" auto / 1fr 1fr; }.xdf-export-actions .xdf-export-cancel { grid-area: cancel; }.xdf-export-actions .xdf-export-retry { grid-area: retry; }.xdf-export-actions .xdf-export-submit { grid-area: submit; min-width: 0; } }
-            @media (max-width: 380px) { #xdf-schedule-export-button { right: 14px; bottom: 14px; }.xdf-export-app-icon { display: none; }.xdf-export-title-group { gap: 0; }.xdf-export-heading p { font-size: 12px; }.xdf-export-presets { grid-template-columns: repeat(2, 1fr); } }
+            @media (max-width: 380px) { #xdf-schedule-export-button { right: 14px; }.xdf-export-app-icon { display: none; }.xdf-export-title-group { gap: 0; }.xdf-export-heading p { font-size: 12px; }.xdf-export-presets { grid-template-columns: repeat(2, 1fr); } }
             @media (prefers-reduced-motion: reduce) { #xdf-schedule-export-dialog, .xdf-export-card { animation: none; } #xdf-schedule-export-button, .xdf-export-actions button, .xdf-export-presets button { transition: none; } }
         `;
         document.head.appendChild(style);
+        applyPosition(loadFloatingPosition() || defaultPosition());
+        scheduleDock();
+        button.addEventListener('pointerenter', revealButton);
+        button.addEventListener('pointerleave', scheduleDock);
+        button.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0) return;
+            revealButton();
+            dragState = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, origin: { ...currentPosition } };
+            button.setPointerCapture?.(event.pointerId);
+        });
+        button.addEventListener('pointermove', (event) => {
+            if (!dragState || event.pointerId !== dragState.pointerId) return;
+            const deltaX = event.clientX - dragState.startX;
+            const deltaY = event.clientY - dragState.startY;
+            if (!didDrag && Math.hypot(deltaX, deltaY) < 4) return;
+            didDrag = true;
+            button.classList.add('is-dragging');
+            applyPosition({ x: dragState.origin.x + deltaX, y: dragState.origin.y + deltaY });
+            event.preventDefault();
+        });
+        button.addEventListener('pointerup', finishDragging);
+        button.addEventListener('pointercancel', finishDragging);
+        button.addEventListener('click', (event) => {
+            if (didDrag) {
+                event.preventDefault();
+                return;
+            }
+            showExportDialog();
+        });
+        window.addEventListener('resize', () => {
+            if (!currentPosition) return;
+            if (docked) {
+                docked = false;
+                dockButton();
+                return;
+            }
+            applyPosition(currentPosition);
+        });
     }
 
     addExportButton();
