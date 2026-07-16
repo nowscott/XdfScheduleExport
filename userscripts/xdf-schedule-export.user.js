@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XDF 课表导出
 // @namespace    https://github.com/nowscott/XdfScheduleCrawler
-// @version      1.3.5
+// @version      1.3.6
 // @description  在已登录的课表页面中导出月视图、统计和课表明细。
 // @author       nowscott
 // @match        https://we.xdf.cn/*
@@ -301,6 +301,26 @@
         return weeks;
     }
 
+    function weeksInRange(startDate, endDate) {
+        const start = new Date(`${startDate}T00:00:00`);
+        const end = new Date(`${endDate}T00:00:00`);
+        const cursor = new Date(start);
+        cursor.setDate(cursor.getDate() - ((cursor.getDay() + 6) % 7));
+        const last = new Date(end);
+        last.setDate(last.getDate() + (6 - ((last.getDay() + 6) % 7)));
+        const weeks = [];
+        while (cursor <= last) {
+            const week = [];
+            for (let index = 0; index < 7; index += 1) {
+                const dateKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+                week.push(cursor >= start && cursor <= end ? dateKey : '');
+                cursor.setDate(cursor.getDate() + 1);
+            }
+            weeks.push(week);
+        }
+        return weeks;
+    }
+
     function monthsInRange(startDate, endDate) {
         const months = [];
         const cursor = new Date(`${startDate}T00:00:00`);
@@ -313,7 +333,7 @@
         return months;
     }
 
-    function createMonthSheet(year, month, lessons, { includeTitle = true } = {}) {
+    function createCalendarSheet({ lessons, weeks, dateKeyForDay, dateLabel, title = '', summary = '' }) {
         const byDate = new Map();
         lessons.forEach((lesson) => {
             const date = String(lesson._date || '').slice(0, 10);
@@ -322,12 +342,11 @@
             byDate.set(date, entries);
         });
         byDate.forEach((entries) => entries.sort((a, b) => String(a.lessonStartTime || '').localeCompare(String(b.lessonStartTime || ''))));
-        const weeks = monthWeeks(year, month);
         const timeRowsByWeek = weeks.map((week) => {
             const slots = new Map();
             week.forEach((day) => {
-                if (!day) return;
-                const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const dateKey = dateKeyForDay(day);
+                if (!dateKey) return;
                 const countsBySlot = new Map();
                 (byDate.get(dateKey) || []).forEach((lesson) => {
                     const slot = timeSlotKey(lesson);
@@ -340,23 +359,24 @@
                 .flatMap(([slot, count]) => Array.from({ length: count }, () => slot));
         });
         const lessonRowsByWeek = timeRowsByWeek.map((timeRows) => Math.max(1, timeRows.length));
-        const headerRows = includeTitle ? 3 : 1;
+        const weekdayRow = (title ? 1 : 0) + (summary ? 1 : 0);
+        const headerRows = weekdayRow + 1;
         const totalRows = headerRows + lessonRowsByWeek.reduce((sum, lessonRows) => sum + 1 + lessonRows, 0);
         const sheet = XLSX.utils.aoa_to_sheet(Array.from({ length: totalRows }, () => Array(8).fill('')));
-        sheet['!merges'] = includeTitle ? [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }] : [];
+        sheet['!merges'] = [];
+        if (title) sheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } });
+        if (summary) sheet['!merges'].push({ s: { r: summary ? 1 : 0, c: 0 }, e: { r: summary ? 1 : 0, c: 7 } });
         sheet['!cols'] = [{ wch: 14 }, ...Array.from({ length: 7 }, () => ({ wch: 27 }))];
         sheet['!rows'] = [
-            ...(includeTitle ? [{ hpt: 40 }, { hpt: 24 }] : []),
+            ...(title ? [{ hpt: 40 }] : []),
+            ...(summary ? [{ hpt: 24 }] : []),
             { hpt: 28 },
             ...lessonRowsByWeek.flatMap((lessonRows) => [{ hpt: 22 }, ...Array.from({ length: lessonRows }, () => ({ hpt: 23 }))]),
         ];
         sheet['!ref'] = `A1:H${totalRows}`;
 
-        if (includeTitle) {
-            cell(sheet, 0, 0, `${year} 年 ${month} 月课程月视图`, { font: font(20, { bold: true, color: { rgb: COLORS.titleText } }), fill: fill(COLORS.header), alignment: alignment('center') });
-            cell(sheet, 1, 0, `共 ${lessons.length} 节课 · ${byDate.size} 个有课日期 · 同一横排仅对应同一时间段`, { font: font(10, { color: { rgb: COLORS.summaryText } }), fill: fill(COLORS.date), alignment: alignment('center') });
-        }
-        const weekdayRow = includeTitle ? 2 : 0;
+        if (title) cell(sheet, 0, 0, title, { font: font(20, { bold: true, color: { rgb: COLORS.titleText } }), fill: fill(COLORS.header), alignment: alignment('center') });
+        if (summary) cell(sheet, 1, 0, summary, { font: font(10, { color: { rgb: COLORS.summaryText } }), fill: fill(COLORS.date), alignment: alignment('center') });
         cell(sheet, weekdayRow, 0, '时间段', { font: font(11, { bold: true, color: { rgb: COLORS.titleText } }), fill: fill(COLORS.weekday), alignment: alignment('center'), border: THIN_BORDER });
         WEEKDAYS.forEach((weekday, column) => {
             cell(sheet, weekdayRow, column + 1, weekday, { font: font(11, { bold: true, color: { rgb: COLORS.titleText } }), fill: fill(COLORS.weekday), alignment: alignment('center'), border: THIN_BORDER });
@@ -376,13 +396,13 @@
             }
             week.forEach((day, weekdayIndex) => {
                 const isWeekend = weekdayIndex >= 5;
-                if (!day) {
+                const dateKey = dateKeyForDay(day);
+                if (!dateKey) {
                     for (let rowOffset = 0; rowOffset <= lessonRows; rowOffset += 1) cell(sheet, dateRow + rowOffset, weekdayIndex + 1, '', { fill: fill(COLORS.outside), border: THIN_BORDER });
                     return;
                 }
-                const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const dayLessons = byDate.get(dateKey) || [];
-                cell(sheet, dateRow, weekdayIndex + 1, `${day} 日${dayLessons.length ? ` · ${dayLessons.length} 节` : ''}`, {
+                cell(sheet, dateRow, weekdayIndex + 1, `${dateLabel(day)}${dayLessons.length ? ` · ${dayLessons.length} 节` : ''}`, {
                     font: font(10, { bold: true, color: { rgb: COLORS.summaryText } }),
                     fill: fill(dayLessons.length ? COLORS.activeDate : (isWeekend ? COLORS.weekendDate : COLORS.date)), alignment: alignment('left'), border: THIN_BORDER,
                 });
@@ -412,39 +432,28 @@
         return sheet;
     }
 
-    function appendSheetAtRow(target, source, rowOffset) {
-        Object.entries(source).forEach(([address, value]) => {
-            const match = address.match(/^([A-Z]+)(\d+)$/);
-            if (!match) return;
-            target[`${match[1]}${Number(match[2]) + rowOffset}`] = value;
+    function createMonthSheet(year, month, lessons) {
+        return createCalendarSheet({
+            lessons,
+            weeks: monthWeeks(year, month),
+            dateKeyForDay: (day) => day ? `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '',
+            dateLabel: (day) => `${day} 日`,
+            title: `${year} 年 ${month} 月课程月视图`,
+            summary: `共 ${lessons.length} 节课 · ${new Set(lessons.map((lesson) => lesson._date)).size} 个有课日期 · 同一横排仅对应同一时间段`,
         });
-        (source['!merges'] || []).forEach((merge) => {
-            target['!merges'].push({
-                s: { r: merge.s.r + rowOffset, c: merge.s.c },
-                e: { r: merge.e.r + rowOffset, c: merge.e.c },
-            });
-        });
-        target['!rows'].push(...(source['!rows'] || []));
     }
 
-    function createCombinedMonthSheet(months, startDate, endDate) {
-        const sheet = XLSX.utils.aoa_to_sheet([[]]);
-        sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
-        sheet['!cols'] = [{ wch: 14 }, ...Array.from({ length: 7 }, () => ({ wch: 27 }))];
-        sheet['!rows'] = [{ hpt: 40 }];
-        cell(sheet, 0, 0, `${startDate} 至 ${endDate} 课表月视图`, { font: font(20, { bold: true, color: { rgb: COLORS.titleText } }), fill: fill(COLORS.header), alignment: alignment('center') });
-        let rowOffset = 1;
-        months.forEach(({ year, month, lessons }, index) => {
-            const monthSheet = createMonthSheet(year, month, lessons, { includeTitle: false });
-            appendSheetAtRow(sheet, monthSheet, rowOffset);
-            rowOffset += monthSheet['!rows'].length;
-            if (index < months.length - 1) {
-                sheet['!rows'].push({ hpt: 10 }, { hpt: 10 });
-                rowOffset += 2;
-            }
+    function createCombinedMonthSheet(lessons, startDate, endDate) {
+        return createCalendarSheet({
+            lessons,
+            weeks: weeksInRange(startDate, endDate),
+            dateKeyForDay: (day) => day,
+            dateLabel: (dateKey) => {
+                const [, month, day] = dateKey.split('-');
+                return `${Number(month)} 月 ${Number(day)} 日`;
+            },
+            title: `${startDate} 至 ${endDate} 课表月视图`,
         });
-        sheet['!ref'] = `A1:H${Math.max(rowOffset, 1)}`;
-        return sheet;
     }
 
     function valueFromLesson(lesson, fields, fallback = '未填写') {
@@ -543,7 +552,7 @@
         });
         const months = monthsInRange(startDate, endDate).map(({ year, month }) => ({ year, month, lessons: grouped.get(`${year}-${String(month).padStart(2, '0')}`) || [] }));
         if (combineMonthViews) {
-            XLSX.utils.book_append_sheet(workbook, createCombinedMonthSheet(months, startDate, endDate), '月视图');
+            XLSX.utils.book_append_sheet(workbook, createCombinedMonthSheet(schedules, startDate, endDate), '月视图');
         } else {
             months.forEach(({ year, month, lessons }) => XLSX.utils.book_append_sheet(workbook, createMonthSheet(year, month, lessons), `${year}年${month}月月视图`));
         }

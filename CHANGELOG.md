@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [1.3.6] - 2026-07-16
+
+### 修复
+
+- 合并月视图改为按整个导出日期范围生成连续周序列，跨月周不再被拆成两块或重复表头。
+
 ## [1.3.5] - 2026-07-14
 
 ### 变更
@@ -77,7 +83,8 @@
 
 - 复用持久化浏览器上下文已有的初始标签页，不再额外打开空白页。
 
-[Unreleased]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.5...HEAD
+[Unreleased]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.6...HEAD
+[1.3.6]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.0...v1.3.3
