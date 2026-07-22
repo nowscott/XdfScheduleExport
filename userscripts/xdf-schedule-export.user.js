@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         XDF 课表导出
 // @namespace    https://github.com/nowscott/XdfScheduleCrawler
-// @version      1.3.9
+// @version      1.3.11
 // @description  在已登录的课表页面中导出月视图、统计和课表明细。
 // @author       nowscott
 // @match        https://we.xdf.cn/*
+// @noframes
 // @require      https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js
 // @downloadURL  https://raw.githubusercontent.com/nowscott/XdfScheduleExport/main/userscripts/xdf-schedule-export.user.js
 // @updateURL    https://raw.githubusercontent.com/nowscott/XdfScheduleExport/main/userscripts/xdf-schedule-export.user.js
@@ -16,8 +17,11 @@
 (function () {
     'use strict';
 
+    // 本地开发加载器通过 @require 载入本文件时不会继承本文件的 @noframes。
+    if (window.top !== window.self) return;
+
     const API_BASE = 'https://gw-xeasy.xdf.cn/xeasy-srv-teachinghub';
-    const SCRIPT_VERSION = '1.3.9';
+    const SCRIPT_VERSION = '1.3.11';
     const MAX_CONCURRENT_REQUESTS = 3;
     const REQUEST_TIMEOUT_MS = 15000;
     const MAX_REQUEST_ATTEMPTS = 3;
@@ -838,7 +842,7 @@
 
         const style = document.createElement('style');
         style.textContent = `
-            #xdf-schedule-export-button { position: fixed; top: calc(25% - 26px); right: 24px; z-index: 99999; display: grid; box-sizing: border-box; width: 52px; height: 52px; place-items: center; overflow: hidden; padding: 6px; border: 1px solid rgb(255 255 255 / 72%); border-radius: 50%; background: linear-gradient(135deg, rgb(255 255 255 / 86%), rgb(239 246 255 / 68%)); color: #17426d; box-shadow: 0 12px 32px rgb(15 54 92 / 18%), inset 0 1px 0 rgb(255 255 255 / 86%); backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%); cursor: grab; touch-action: none; transition: left .46s cubic-bezier(.16, 1, .3, 1), top .46s cubic-bezier(.16, 1, .3, 1), width .46s cubic-bezier(.16, 1, .3, 1), height .46s cubic-bezier(.16, 1, .3, 1), padding .46s cubic-bezier(.16, 1, .3, 1), border-radius .46s cubic-bezier(.16, 1, .3, 1), box-shadow .3s ease, background .3s ease; }
+            #xdf-schedule-export-button { position: fixed; top: calc(25% - 26px); right: 24px; z-index: 1999; display: grid; box-sizing: border-box; width: 52px; height: 52px; place-items: center; overflow: hidden; padding: 6px; border: 1px solid rgb(255 255 255 / 72%); border-radius: 50%; background: linear-gradient(135deg, rgb(255 255 255 / 86%), rgb(239 246 255 / 68%)); color: #17426d; box-shadow: 0 12px 32px rgb(15 54 92 / 18%), inset 0 1px 0 rgb(255 255 255 / 86%); backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%); cursor: grab; touch-action: none; transition: left .46s cubic-bezier(.16, 1, .3, 1), top .46s cubic-bezier(.16, 1, .3, 1), width .46s cubic-bezier(.16, 1, .3, 1), height .46s cubic-bezier(.16, 1, .3, 1), padding .46s cubic-bezier(.16, 1, .3, 1), border-radius .46s cubic-bezier(.16, 1, .3, 1), box-shadow .3s ease, background .3s ease; }
             #xdf-schedule-export-button:not(.is-docked):hover { transform: translateY(-2px) scale(1.04); background: linear-gradient(135deg, rgb(255 255 255 / 96%), rgb(232 243 255 / 82%)); box-shadow: 0 16px 38px rgb(15 54 92 / 23%), inset 0 1px 0 #fff; }
             #xdf-schedule-export-button.is-docked { width: 42px; height: 42px; padding: 5px; background: linear-gradient(145deg, rgb(255 255 255 / 94%), rgb(213 233 255 / 74%)); box-shadow: 0 7px 18px rgb(15 54 92 / 17%), inset 0 1px 0 #fff; }
             #xdf-schedule-export-button.is-docked-left { border-radius: 0 22px 22px 0; } #xdf-schedule-export-button.is-docked-right { border-radius: 22px 0 0 22px; }

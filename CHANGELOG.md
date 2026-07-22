@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+## [1.3.11] - 2026-07-22
+
+### 修复
+
+- 将悬浮导出按钮置于页面弹窗下层，避免遮挡试卷预览。
+- 仅在顶层页面加载导出按钮，避免内嵌预览页重复显示按钮。
+
 ## [1.3.9] - 2026-07-22
 
 ### 移除
@@ -104,7 +111,8 @@
 
 - 复用持久化浏览器上下文已有的初始标签页，不再额外打开空白页。
 
-[Unreleased]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.9...HEAD
+[Unreleased]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.11...HEAD
+[1.3.11]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.9...v1.3.11
 [1.3.9]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.6...v1.3.9
 [1.3.6]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.4...v1.3.5

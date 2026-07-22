@@ -41,8 +41,11 @@ function createXlsxSpy() {
 
 const sourcePath = new URL('../userscripts/xdf-schedule-export.user.js', import.meta.url);
 const userscriptSource = fs.readFileSync(sourcePath, 'utf8');
-assert.match(userscriptSource, /@version\s+1\.3\.9/);
-assert.match(userscriptSource, /SCRIPT_VERSION = '1\.3\.9'/);
+assert.match(userscriptSource, /@version\s+1\.3\.11/);
+assert.match(userscriptSource, /SCRIPT_VERSION = '1\.3\.11'/);
+assert.match(userscriptSource, /@noframes/);
+assert.match(userscriptSource, /if \(window\.top !== window\.self\) return;/);
+assert.match(userscriptSource, /#xdf-schedule-export-button \{ position: fixed;[^}]*z-index: 1999;/);
 assert.match(userscriptSource, /XDF SCHEDULE <b>v\$\{SCRIPT_VERSION\}<\/b>/);
 assert.match(userscriptSource, /function attachDatePicker/);
 assert.doesNotMatch(userscriptSource, /type="date"/);
@@ -66,6 +69,11 @@ assert.match(userscriptSource, /window\.innerHeight \* \.25/);
 assert.doesNotMatch(userscriptSource, /课堂反馈|feedback/i);
 assert.match(userscriptSource, /REQUEST_TIMEOUT_MS = 15000/);
 assert.match(userscriptSource, /MAX_REQUEST_ATTEMPTS = 3/);
+
+const iframeContext = { window: { top: {}, self: {} } };
+iframeContext.globalThis = iframeContext;
+vm.runInNewContext(userscriptSource, iframeContext, { filename: 'xdf-schedule-export.user.js' });
+assert.equal(iframeContext.__userscriptTestHooks, undefined);
 
 const source = userscriptSource.replace(
     '    addExportButton();',
