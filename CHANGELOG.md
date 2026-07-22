@@ -6,6 +6,27 @@
 
 ## [Unreleased]
 
+## [1.3.9] - 2026-07-22
+
+### 移除
+
+- 从课表导出脚本中移除课堂反馈助手；反馈功能将改由独立脚本维护。
+
+### 修复
+
+- 课表接口增加 15 秒超时和最多 3 次自动重试，降低临时网络或平台 5xx 错误造成的导出失败。
+- 修复内置日历超出弹窗卡片后被裁切的问题。
+
+### 优化
+
+- 重做日期选择窗口为简洁工作台风格，强化日期、快捷范围与主操作层级。
+- 日期选择窗口显示当前脚本版本，便于确认已载入的版本。
+- 用内置日历替换浏览器原生日期选择器，统一弹窗视觉并支持月份切换、今天和清除。
+
+### 开发
+
+- 增加可直接导入 Tampermonkey 的本地开发加载器，用于 VS Code 保存后刷新联调。
+
 ## [1.3.6] - 2026-07-16
 
 ### 修复
@@ -83,7 +104,8 @@
 
 - 复用持久化浏览器上下文已有的初始标签页，不再额外打开空白页。
 
-[Unreleased]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.6...HEAD
+[Unreleased]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.9...HEAD
+[1.3.9]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.6...v1.3.9
 [1.3.6]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/nowscott/XdfScheduleExport/compare/v1.3.3...v1.3.4

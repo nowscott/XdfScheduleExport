@@ -41,7 +41,12 @@ function createXlsxSpy() {
 
 const sourcePath = new URL('../userscripts/xdf-schedule-export.user.js', import.meta.url);
 const userscriptSource = fs.readFileSync(sourcePath, 'utf8');
-assert.match(userscriptSource, /@version\s+1\.3\.6/);
+assert.match(userscriptSource, /@version\s+1\.3\.9/);
+assert.match(userscriptSource, /SCRIPT_VERSION = '1\.3\.9'/);
+assert.match(userscriptSource, /XDF SCHEDULE <b>v\$\{SCRIPT_VERSION\}<\/b>/);
+assert.match(userscriptSource, /function attachDatePicker/);
+assert.doesNotMatch(userscriptSource, /type="date"/);
+assert.match(userscriptSource, /\.xdf-export-card \{ width: min\(528px, 100%\); overflow: visible;/);
 assert.match(userscriptSource, /backdrop-filter: blur\(36px\) saturate\(180%\)/);
 assert.match(userscriptSource, /@media \(max-width: 600px\)/);
 assert.match(userscriptSource, /@media \(prefers-reduced-motion: reduce\)/);
@@ -58,6 +63,9 @@ assert.match(userscriptSource, /transition: left \.46s/);
 assert.match(userscriptSource, /aria-label', '导出课表'/);
 assert.doesNotMatch(userscriptSource, /<span>导出课表<\/span>/);
 assert.match(userscriptSource, /window\.innerHeight \* \.25/);
+assert.doesNotMatch(userscriptSource, /课堂反馈|feedback/i);
+assert.match(userscriptSource, /REQUEST_TIMEOUT_MS = 15000/);
+assert.match(userscriptSource, /MAX_REQUEST_ATTEMPTS = 3/);
 
 const source = userscriptSource.replace(
     '    addExportButton();',
@@ -66,6 +74,7 @@ const source = userscriptSource.replace(
 const xlsx = createXlsxSpy();
 const stored = new Map();
 let failSecondDay = true;
+let secondDayRequests = 0;
 const context = {
     XLSX: xlsx,
     console,
@@ -79,7 +88,8 @@ const context = {
     Math,
     RegExp,
     performance: { now: () => 0 },
-    window: { setTimeout },
+    AbortController,
+    window: { setTimeout, clearTimeout },
     localStorage: {
         getItem: (key) => stored.get(key) ?? null,
         setItem: (key, value) => stored.set(key, value),
@@ -87,6 +97,7 @@ const context = {
     fetch: async (url, options = {}) => {
         const day = JSON.parse(options.body || '{}').date;
         if (day === '2026-07-14' && failSecondDay) {
+            secondDayRequests += 1;
             return { ok: false, status: 503, json: async () => ({ msg: 'temporary failure' }) };
         }
         return {
@@ -149,6 +160,7 @@ assert.match(termEnd, /^\d{4}-\d{2}-\d{2}$/);
 const initial = await fetchLessonDetails([{ day: '2026-07-13' }, { day: '2026-07-14' }], () => {});
 assert.equal(initial.schedules.length, 1);
 assert.equal(JSON.stringify(initial.failedDays.map(({ day }) => day)), '["2026-07-14"]');
+assert.equal(secondDayRequests, 3);
 failSecondDay = false;
 const retried = await fetchLessonDetails(initial.failedDays, () => {});
 assert.equal(retried.schedules.length, 1);

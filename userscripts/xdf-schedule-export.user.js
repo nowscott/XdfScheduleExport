@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XDF 课表导出
 // @namespace    https://github.com/nowscott/XdfScheduleCrawler
-// @version      1.3.6
+// @version      1.3.9
 // @description  在已登录的课表页面中导出月视图、统计和课表明细。
 // @author       nowscott
 // @match        https://we.xdf.cn/*
@@ -17,7 +17,10 @@
     'use strict';
 
     const API_BASE = 'https://gw-xeasy.xdf.cn/xeasy-srv-teachinghub';
+    const SCRIPT_VERSION = '1.3.9';
     const MAX_CONCURRENT_REQUESTS = 3;
+    const REQUEST_TIMEOUT_MS = 15000;
+    const MAX_REQUEST_ATTEMPTS = 3;
     const PREFERENCES_KEY = 'xdf-schedule-export-preferences-v1';
     const FLOATING_BUTTON_KEY = 'xdf-schedule-export-floating-button-v1';
     const WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
@@ -37,7 +40,7 @@
         description: '备注', desc: '备注', grade: '年级', subject: '科目',
         lessonTypeDesc: '课次类型', lessonType: '课次类型码', classCode: '班级代码',
         lessonId: '课次ID', stuCount: '学生数', schoolId: '校区ID', resourceCount: '资源数',
-        videoType: '视频类型', feedbackAllFinished: '反馈完成', bindStatus: '绑定状态',
+        videoType: '视频类型', bindStatus: '绑定状态',
         teachingChannelCodeList: '教学渠道', _date: '日期',
     };
     const COLUMN_PRIORITY = ['日期', '开始时间', '结束时间', '学生', '课程名称', '老师', '教室', '校区', '课次类型', '状态', '备注'];
@@ -149,12 +152,28 @@
     }
 
     async function requestJson(url, options) {
-        const response = await fetch(url, { credentials: 'include', ...options });
-        const body = await response.json().catch(() => null);
-        if (!response.ok || body?.code !== '1') {
-            throw new Error(body?.msg || `请求失败（HTTP ${response.status}）`);
+        let lastError;
+        for (let attempt = 1; attempt <= MAX_REQUEST_ATTEMPTS; attempt += 1) {
+            const controller = new AbortController();
+            const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+            try {
+                const response = await fetch(url, { credentials: 'include', signal: controller.signal, ...options });
+                const body = await response.json().catch(() => null);
+                if (!response.ok || body?.code !== '1') {
+                    const error = new Error(body?.msg || `请求失败（HTTP ${response.status}）`);
+                    error.retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+                    throw error;
+                }
+                return body.data;
+            } catch (error) {
+                lastError = error;
+                if (attempt === MAX_REQUEST_ATTEMPTS || error?.retryable === false) throw error;
+                await wait(300 * 2 ** (attempt - 1));
+            } finally {
+                window.clearTimeout(timeout);
+            }
         }
-        return body.data;
+        throw lastError;
     }
 
     async function fetchLessonDetails(daysWithLessons, onProgress) {
@@ -561,6 +580,66 @@
         XLSX.writeFile(workbook, `课表_${startDate}_至_${endDate}${suffix}.xlsx`);
     }
 
+    function attachDatePicker(input, { onOpen } = {}) {
+        const picker = document.createElement('div');
+        picker.className = 'xdf-date-picker';
+        picker.hidden = true;
+        picker.setAttribute('role', 'dialog');
+        picker.setAttribute('aria-label', '选择日期');
+        input.closest('.xdf-date-control').appendChild(picker);
+        let cursor = null;
+
+        const dateFromValue = (value) => {
+            const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date();
+        };
+        const render = () => {
+            const year = cursor.getFullYear();
+            const month = cursor.getMonth();
+            const firstDay = new Date(year, month, 1).getDay();
+            const selected = input.value;
+            const today = formatDate(new Date());
+            const cells = Array.from({ length: 42 }, (_, index) => {
+                const day = new Date(year, month, index - firstDay + 1);
+                const value = formatDate(day);
+                const classes = [day.getMonth() === month ? '' : 'is-outside', value === selected ? 'is-selected' : '', value === today ? 'is-today' : ''].filter(Boolean).join(' ');
+                return `<button type="button" class="xdf-date-picker-day ${classes}" data-date="${value}" aria-label="${value}">${day.getDate()}</button>`;
+            }).join('');
+            picker.innerHTML = `<div class="xdf-date-picker-head"><button type="button" data-picker-action="previous" aria-label="上个月">‹</button><strong>${year} 年 ${month + 1} 月</strong><button type="button" data-picker-action="next" aria-label="下个月">›</button></div><div class="xdf-date-picker-weekdays"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div class="xdf-date-picker-days">${cells}</div><div class="xdf-date-picker-actions"><button type="button" data-picker-action="today">今天</button><button type="button" data-picker-action="clear">清除</button></div>`;
+        };
+        const close = () => { picker.hidden = true; };
+        const open = () => {
+            onOpen?.();
+            cursor = dateFromValue(input.value);
+            render();
+            picker.hidden = false;
+        };
+        input.addEventListener('click', () => (picker.hidden ? open() : close()));
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
+            if (event.key === 'Escape') close();
+        });
+        picker.addEventListener('click', (event) => {
+            const button = event.target.closest('button');
+            if (!button) return;
+            const action = button.dataset.pickerAction;
+            if (button.dataset.date) {
+                input.value = button.dataset.date;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                close();
+            } else if (action === 'previous') {
+                cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1); render();
+            } else if (action === 'next') {
+                cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1); render();
+            } else if (action === 'today') {
+                input.value = formatDate(new Date()); input.dispatchEvent(new Event('input', { bubbles: true })); close();
+            } else if (action === 'clear') {
+                input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); close();
+            }
+        });
+        return { close };
+    }
+
     function showExportDialog() {
         if (document.getElementById('xdf-schedule-export-dialog')) return;
         const preferences = loadPreferences();
@@ -572,13 +651,13 @@
                 <div class="xdf-export-glow xdf-export-glow-one"></div><div class="xdf-export-glow xdf-export-glow-two"></div>
                 <div class="xdf-export-content">
                     <div class="xdf-export-heading">
-                        <div class="xdf-export-title-group"><span class="xdf-export-app-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3.75h7.2L18.5 8v11.75A1.25 1.25 0 0 1 17.25 21H7a1.5 1.5 0 0 1-1.5-1.5V5.25A1.5 1.5 0 0 1 7 3.75Z"/><path d="M14 3.9V8h4.15M8.5 12h7M8.5 15h7M8.5 18h4"/></svg></span><div><span class="xdf-export-eyebrow">XDF SCHEDULE</span><h2 id="xdf-export-title">导出课表</h2><p>选择日期范围，即可生成完整的 Excel 课表。</p></div></div>
+                        <div class="xdf-export-title-group"><span class="xdf-export-app-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3.75h7.2L18.5 8v11.75A1.25 1.25 0 0 1 17.25 21H7a1.5 1.5 0 0 1-1.5-1.5V5.25A1.5 1.5 0 0 1 7 3.75Z"/><path d="M14 3.9V8h4.15M8.5 12h7M8.5 15h7M8.5 18h4"/></svg></span><div><span class="xdf-export-eyebrow">XDF SCHEDULE <b>v${SCRIPT_VERSION}</b></span><h2 id="xdf-export-title">导出课表</h2><p>选择日期范围，即可生成完整的 Excel 课表。</p></div></div>
                         <button type="button" class="xdf-export-close" aria-label="关闭"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 5.5 9 9m0-9-9 9"/></svg></button>
                     </div>
                     <section class="xdf-export-section" aria-labelledby="xdf-export-range-label">
                         <div class="xdf-export-section-heading"><span id="xdf-export-range-label">日期范围</span><span>快速选择</span></div>
                         <div class="xdf-export-presets" aria-label="日期快捷选择"><button type="button" data-preset="this-week">本周</button><button type="button" data-preset="next-week">下周</button><button type="button" data-preset="this-month">本月</button><button type="button" data-preset="next-month">下月</button><button type="button" data-preset="this-term">本学期</button></div>
-                        <div class="xdf-export-fields"><label><span>开始日期</span><input id="xdf-export-start" type="date" required value="${defaultStart}"></label><span class="xdf-export-range-arrow" aria-hidden="true">→</span><label><span>结束日期</span><input id="xdf-export-end" type="date" required value="${defaultEnd}"></label></div>
+                        <div class="xdf-export-fields"><label class="xdf-date-field"><span>开始日期</span><span class="xdf-date-control"><input id="xdf-export-start" type="text" inputmode="none" readonly required value="${defaultStart}" aria-haspopup="dialog"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5.25 3.5v2M14.75 3.5v2M3.5 7.25h13M5.5 5h9A1.5 1.5 0 0 1 16 6.5v9A1.5 1.5 0 0 1 14.5 17h-9A1.5 1.5 0 0 1 4 15.5v-9A1.5 1.5 0 0 1 5.5 5Z"/></svg></span></label><span class="xdf-export-range-arrow" aria-hidden="true">→</span><label class="xdf-date-field"><span>结束日期</span><span class="xdf-date-control"><input id="xdf-export-end" type="text" inputmode="none" readonly required value="${defaultEnd}" aria-haspopup="dialog"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5.25 3.5v2M14.75 3.5v2M3.5 7.25h13M5.5 5h9A1.5 1.5 0 0 1 16 6.5v9A1.5 1.5 0 0 1 14.5 17h-9A1.5 1.5 0 0 1 4 15.5v-9A1.5 1.5 0 0 1 5.5 5Z"/></svg></span></label></div>
                     </section>
                     <label class="xdf-export-option"><input id="xdf-export-combine-months" type="checkbox" ${preferences.combineMonthViews ? 'checked' : ''}><span class="xdf-export-check"><svg viewBox="0 0 16 16"><path d="m3.5 8.2 2.8 2.8 6.2-6"/></svg></span><span><strong>合并多个月份</strong><small>连续放在同一个工作表中，查看更方便</small></span></label>
                     <p id="xdf-export-status" class="xdf-export-status" aria-live="polite"></p>
@@ -595,6 +674,8 @@
         const presetButtons = [...dialog.querySelectorAll('[data-preset]')];
         let lastExport = null;
         const close = () => dialog.remove();
+        const startPicker = attachDatePicker(startInput);
+        const endPicker = attachDatePicker(endInput, { onOpen: startPicker.close });
         dialog.querySelector('.xdf-export-close').addEventListener('click', close);
         dialog.querySelector('.xdf-export-cancel').addEventListener('click', close);
         dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
@@ -785,6 +866,19 @@
             @media (max-width: 600px) { #xdf-schedule-export-dialog { align-items: end; padding: 12px; }.xdf-export-card { border-radius: 25px; }.xdf-export-content { padding: 22px 18px 18px; }.xdf-export-heading p { max-width: 250px; }.xdf-export-presets { grid-template-columns: repeat(3, 1fr); }.xdf-export-fields { grid-template-columns: 1fr; }.xdf-export-range-arrow { display: none; }.xdf-export-actions { display: grid; grid-template: "cancel submit" auto "retry retry" auto / 1fr 1fr; }.xdf-export-actions .xdf-export-cancel { grid-area: cancel; }.xdf-export-actions .xdf-export-retry { grid-area: retry; }.xdf-export-actions .xdf-export-submit { grid-area: submit; min-width: 0; } }
             @media (max-width: 380px) { #xdf-schedule-export-button { right: 14px; }.xdf-export-app-icon { display: none; }.xdf-export-title-group { gap: 0; }.xdf-export-heading p { font-size: 12px; }.xdf-export-presets { grid-template-columns: repeat(2, 1fr); } }
             @media (prefers-reduced-motion: reduce) { #xdf-schedule-export-dialog, .xdf-export-card { animation: none; } #xdf-schedule-export-button, .xdf-export-actions button, .xdf-export-presets button { transition: none; } }
+        `;
+        style.textContent += `
+            /* 简洁工作台风格：去掉厚重玻璃质感，让日期和主操作更清晰。 */
+            #xdf-schedule-export-dialog { padding: 20px; background: rgb(15 23 42 / 48%); backdrop-filter: none; -webkit-backdrop-filter: none; }
+            .xdf-export-card { width: min(528px, 100%); overflow: visible; border: 1px solid #dbe3ee; border-radius: 18px; background: #fff; box-shadow: 0 20px 54px rgb(15 23 42 / 28%); backdrop-filter: none; -webkit-backdrop-filter: none; }
+            .xdf-export-glow { display: none; }.xdf-export-content { padding: 24px; }.xdf-export-heading { margin-bottom: 20px; }.xdf-export-app-icon { width: 42px; height: 42px; border: 0; border-radius: 12px; background: #1769d1; box-shadow: none; }.xdf-export-eyebrow { color: #1769d1; font-size: 10px; letter-spacing: 1.2px; }.xdf-export-eyebrow b { display: inline-block; margin-left: 5px; padding: 2px 5px; border-radius: 4px; background: #e0edff; color: #175db7; font-size: 9px; letter-spacing: .4px; vertical-align: 1px; }.xdf-export-heading h2 { font-size: 22px; letter-spacing: -.4px; }.xdf-export-heading p { color: #64748b; }
+            .xdf-export-close { border-color: #e2e8f0; background: #f8fafc; box-shadow: none; }.xdf-export-section { padding: 16px; border-color: #e2e8f0; border-radius: 14px; background: #f8fafc; box-shadow: none; }.xdf-export-section-heading { color: #1e293b; }.xdf-export-section-heading span:last-child { color: #94a3b8; }
+            .xdf-export-presets { gap: 6px; margin-bottom: 14px; }.xdf-export-presets button { min-height: 32px; border-color: #dbe3ee; border-radius: 8px; background: #fff; color: #475569; font-weight: 600; }.xdf-export-presets button:hover { border-color: #75a7e8; background: #eff6ff; color: #175db7; transform: none; }.xdf-export-presets button.is-active { border-color: #1769d1; background: #1769d1; box-shadow: none; }
+            .xdf-export-fields { gap: 10px; }.xdf-export-fields label { color: #475569; }.xdf-export-fields input { min-height: 42px; border-color: #cbd5e1; border-radius: 9px; background: #fff; box-shadow: none; }.xdf-export-fields input:hover { background: #fff; }.xdf-export-fields input:focus { border-color: #1769d1; outline: 3px solid rgb(23 105 209 / 14%); background: #fff; }.xdf-export-range-arrow { color: #94a3b8; }
+            .xdf-export-option { margin-top: 10px; padding: 12px 2px; border-radius: 10px; }.xdf-export-option:hover { border-color: transparent; background: transparent; }.xdf-export-check { border-color: #94a3b8; border-radius: 6px; background: #fff; box-shadow: none; }.xdf-export-option input:checked + .xdf-export-check { border-color: #1769d1; background: #1769d1; box-shadow: none; }.xdf-export-status { margin: 10px 0 0; color: #475569; }.xdf-export-status:not(:empty) { border-color: #dbeafe; border-radius: 9px; background: #eff6ff; }
+            .xdf-export-actions { margin-top: 14px; }.xdf-export-actions button { min-height: 40px; border-color: #dbe3ee; border-radius: 9px; background: #fff; color: #475569; }.xdf-export-actions button:hover { background: #f8fafc; transform: none; }.xdf-export-actions .xdf-export-submit { border-color: #1769d1; background: #1769d1; box-shadow: none; }.xdf-export-actions .xdf-export-submit:hover { background: #1258b0; box-shadow: none; }.xdf-export-actions .xdf-export-retry { border-color: #f1c46a; background: #fffbeb; color: #9a5a07; }
+            .xdf-date-control { position: relative; display: block; }.xdf-date-control input { cursor: pointer; padding-right: 42px; }.xdf-date-control svg { position: absolute; top: 50%; right: 13px; width: 18px; height: 18px; fill: none; stroke: #64748b; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; transform: translateY(-50%); pointer-events: none; }.xdf-date-picker { position: absolute; z-index: 4; top: calc(100% + 8px); left: 0; width: 294px; padding: 12px; border: 1px solid #dbe3ee; border-radius: 13px; background: #fff; box-shadow: 0 16px 34px rgb(15 23 42 / 18%); }.xdf-date-picker[hidden] { display: none; }.xdf-date-picker-head { display: grid; grid-template-columns: 32px 1fr 32px; align-items: center; margin-bottom: 10px; text-align: center; color: #1e293b; font-size: 13px; }.xdf-date-picker-head button { width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: #475569; cursor: pointer; font-size: 22px; line-height: 1; }.xdf-date-picker-head button:hover { background: #f1f5f9; }.xdf-date-picker-weekdays, .xdf-date-picker-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }.xdf-date-picker-weekdays { margin-bottom: 4px; color: #94a3b8; font-size: 11px; }.xdf-date-picker-weekdays span { padding: 4px 0; }.xdf-date-picker-day { height: 34px; border: 0; border-radius: 7px; background: transparent; color: #334155; cursor: pointer; font-size: 12px; }.xdf-date-picker-day:hover { background: #eff6ff; color: #1769d1; }.xdf-date-picker-day.is-outside { color: #cbd5e1; }.xdf-date-picker-day.is-today { box-shadow: inset 0 0 0 1px #93c5fd; }.xdf-date-picker-day.is-selected { background: #1769d1; color: #fff; box-shadow: none; }.xdf-date-picker-actions { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 9px; border-top: 1px solid #eef2f7; }.xdf-date-picker-actions button { border: 0; background: transparent; color: #1769d1; cursor: pointer; font-size: 12px; font-weight: 700; }
+            @media (max-width: 600px) { #xdf-schedule-export-dialog { padding: 12px; }.xdf-export-card { border-radius: 16px; }.xdf-export-content { padding: 20px 16px 16px; } }
         `;
         document.head.appendChild(style);
         applyPosition(loadFloatingPosition() || defaultPosition());
